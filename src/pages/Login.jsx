@@ -32,8 +32,11 @@ const Login = () => {
     return (
         <div className="login-container">
             <div className="login-card">
-                <h2 style={{ marginBottom: '0.5rem' }}>Bem-vindo</h2>
-                <p style={{ color: '#6b7280', marginBottom: '2rem' }}>Acesse sua conta para continuar</p>
+                <div style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
+                    <img src="/logo.png" alt="Logo" style={{ width: '80px', height: 'auto', marginBottom: '1rem' }} />
+                    <h2 style={{ marginBottom: '0.5rem' }}>Projeto Visual</h2>
+                    <p style={{ color: '#6b7280' }}>Acesse sua conta para continuar</p>
+                </div>
 
                 {error && (
                     <div style={{ background: '#fee2e2', color: '#b91c1c', padding: '0.75rem', borderRadius: '8px', marginBottom: '1rem', fontSize: '0.875rem' }}>

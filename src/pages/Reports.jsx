@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { FileText, Download, Users, Filter, X } from 'lucide-react';
 import { format, differenceInMinutes, isWithinInterval, startOfDay, endOfDay } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 
 const COLORS = ['#6366f1', '#818cf8', '#a5b4fc', '#c7d2fe', '#e0e7ff'];
@@ -50,9 +51,9 @@ const Reports = () => {
         const { data, error } = await supabase
             .from('activities')
             .select(`
-                *,
-                profiles:user_id (full_name),
-                products (name)
+    *,
+    profiles: user_id(full_name),
+        products(name)
             `)
             .order('created_at', { ascending: false });
 
@@ -138,7 +139,7 @@ const Reports = () => {
             if (act.complexity) counts[act.complexity]++;
         });
         return Object.keys(counts).map(key => ({
-            name: `Nível ${key}`,
+            name: `Nível ${key} `,
             quantidade: counts[key]
         }));
     };
@@ -329,7 +330,7 @@ const Reports = () => {
                         <Tooltip />
                         <Bar dataKey="quantidade" fill="var(--primary)" radius={[4, 4, 0, 0]} label={{ position: 'top', fontSize: 12, fill: 'var(--text-main)', fontWeight: 600 }}>
                             {chartData.map((entry, index) => (
-                                <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                                <Cell key={`cell - ${index} `} fill={COLORS[index % COLORS.length]} />
                             ))}
                         </Bar>
                     </BarChart>
@@ -436,14 +437,14 @@ const Reports = () => {
                     <thead>
                         <tr>
                             <th>Designer</th>
-                            <th>Data/Início</th>
-                            <th>Categoria</th>
+                            <th>Início/Fim</th>
+                            <th>Produto / Descrição</th>
                             <th>Liberação</th>
                             <th>Entrega</th>
-                            <th>Retrabalho</th>
+                            <th>Retr.</th>
                             <th>Duração</th>
                             <th>Status</th>
-                            <th>Comp.</th>
+                            <th>C.</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -454,13 +455,18 @@ const Reports = () => {
                         ) : filteredData.map((act) => (
                             <tr key={act.id}>
                                 <td style={{ fontWeight: 600 }}>{act.profiles?.full_name || 'Designer'}</td>
-                                <td style={{ fontSize: '12px' }}>{format(new Date(act.start_time), 'dd/MM/yyyy HH:mm')}</td>
-                                <td>
-                                    <div style={{ fontSize: '13px' }}>{act.category}</div>
-                                    <div style={{ fontSize: '11px', color: 'var(--primary)', fontWeight: 500 }}>{act.products?.name}</div>
+                                <td style={{ fontSize: '11px' }}>
+                                    <div style={{ fontWeight: 600 }}>{format(new Date(act.start_time), "dd/MM/yyyy")}</div>
+                                    <div style={{ color: 'var(--text-muted)' }}>{act.end_time ? format(new Date(act.end_time), "dd/MM/yyyy") : '-'}</div>
                                 </td>
-                                <td style={{ fontSize: '12px' }}>{act.graphic_release ? format(new Date(act.graphic_release + 'T12:00:00'), 'dd/MM/yyyy') : '-'}</td>
-                                <td style={{ fontSize: '12px' }}>{act.final_delivery ? format(new Date(act.final_delivery + 'T12:00:00'), 'dd/MM/yyyy') : '-'}</td>
+                                <td>
+                                    <div style={{ fontSize: '12px', fontWeight: 600 }}>
+                                        {act.products?.name} - {act.description?.split(' ')[0]}
+                                    </div>
+                                    <div style={{ fontSize: '10px', color: 'var(--text-muted)', fontWeight: 500 }}>{act.category}</div>
+                                </td>
+                                <td style={{ fontSize: '11px' }}>{act.graphic_release ? format(new Date(act.graphic_release + 'T12:00:00'), "dd/MM/yyyy") : '-'}</td>
+                                <td style={{ fontSize: '11px' }}>{act.final_delivery ? format(new Date(act.final_delivery + 'T12:00:00'), "dd/MM/yyyy") : '-'}</td>
                                 <td style={{ fontSize: '12px' }}>{act.reworks || '-'}</td>
                                 <td>
                                     <span style={{ fontWeight: 600 }}>
@@ -468,7 +474,7 @@ const Reports = () => {
                                     </span>
                                 </td>
                                 <td>
-                                    <span className={`status-badge ${act.status === 'Concluído' ? 'status-done' : (act.status === 'Pausado' ? 'status-pending' : '')}`} style={{ background: act.status === 'Pausado' ? '#fef9c3' : '', color: act.status === 'Pausado' ? '#854d0e' : '' }}>
+                                    <span className={`status - badge ${act.status === 'Concluído' ? 'status-done' : (act.status === 'Pausado' ? 'status-pending' : '')} `} style={{ background: act.status === 'Pausado' ? '#fef9c3' : '', color: act.status === 'Pausado' ? '#854d0e' : '' }}>
                                         {act.status}
                                     </span>
                                 </td>

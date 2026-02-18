@@ -30,7 +30,7 @@ const Products = () => {
 
         const { error } = await supabase
             .from('products')
-            .insert([{ name: newProductName }]);
+            .insert([{ name: newProductName.toUpperCase() }]);
 
         if (!error) {
             setNewProductName('');
@@ -55,7 +55,7 @@ const Products = () => {
 
         const { error } = await supabase
             .from('products')
-            .update({ name: editName })
+            .update({ name: editName.toUpperCase() })
             .eq('id', id);
 
         if (!error) {
@@ -99,6 +99,7 @@ const Products = () => {
                             placeholder="Nome do Produto"
                             value={newProductName}
                             onChange={(e) => setNewProductName(e.target.value)}
+                            style={{ textTransform: 'uppercase' }}
                             required
                         />
                     </div>
@@ -131,7 +132,7 @@ const Products = () => {
                                             type="text"
                                             value={editName}
                                             onChange={(e) => setEditName(e.target.value)}
-                                            style={{ height: '32px', padding: '4px 8px' }}
+                                            style={{ height: '32px', padding: '4px 8px', textTransform: 'uppercase' }}
                                         />
                                     ) : (
                                         product.name

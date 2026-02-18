@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { Plus, Edit2, Search, Filter, Trash2 } from 'lucide-react';
 import { format } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
 
 const categories = [
     'Baby', 'Bazar', 'Comercial', 'Diversos', 'Exportação',
@@ -29,10 +30,10 @@ const Dashboard = () => {
     }, []);
 
     const calculateLiveMinutes = (act) => {
-        if (act.status !== 'Em Andamento' || act.is_paused) {
+        if (act.status !== 'Aguardando' || act.is_paused || !act.last_resume_time) {
             return act.total_minutes || 0;
         }
-        const lastResume = new Date(act.last_resume_time || act.start_time);
+        const lastResume = new Date(act.last_resume_time);
         const diffMs = now - lastResume;
         const diffMin = Math.max(0, Math.floor(diffMs / 1000 / 60));
         return (act.total_minutes || 0) + diffMin;
@@ -42,13 +43,15 @@ const Dashboard = () => {
     const [formData, setFormData] = useState({
         category: '',
         description: '',
-        status: 'Pendente',
+        status: 'Aguardando',
         reworks: '',
         graphic_release: '',
         final_delivery: '',
         complexity: '1',
         product_id: '',
-        manual_minutes: ''
+        manual_minutes: '',
+        start_date: '',
+        end_date: ''
     });
 
 
@@ -80,9 +83,10 @@ const Dashboard = () => {
         const { error } = await supabase
             .from('activities')
             .update({
-                status: 'Em Andamento',
-                is_paused: false,
-                last_resume_time: new Date().toISOString()
+                status: 'Aguardando',
+                start_time: new Date().toISOString(),
+                last_resume_time: new Date().toISOString(),
+                is_paused: false
             })
             .eq('id', activity.id);
 
@@ -91,7 +95,6 @@ const Dashboard = () => {
 
     const handlePause = async (activity) => {
         const nowTime = new Date();
-        // Fallback para start_time se last_resume_time nunca foi definido
         const startTime = activity.last_resume_time || activity.start_time;
         const diffMs = nowTime - new Date(startTime);
         const diffMin = Math.max(0, Math.floor(diffMs / 1000 / 60));
@@ -102,8 +105,7 @@ const Dashboard = () => {
             .from('activities')
             .update({
                 is_paused: true,
-                total_minutes: newTotal,
-                status: 'Pausado'
+                total_minutes: newTotal
             })
             .eq('id', activity.id);
 
@@ -115,8 +117,7 @@ const Dashboard = () => {
             .from('activities')
             .update({
                 is_paused: false,
-                last_resume_time: new Date().toISOString(),
-                status: 'Em Andamento'
+                last_resume_time: new Date().toISOString()
             })
             .eq('id', activity.id);
 
@@ -126,9 +127,9 @@ const Dashboard = () => {
     const handleFinish = async (activity) => {
         let finalTotal = activity.total_minutes || 0;
 
-        if (!activity.is_paused && activity.status === 'Em Andamento') {
+        if (!activity.is_paused && activity.last_resume_time) {
             const nowTime = new Date();
-            const startTime = activity.last_resume_time || activity.start_time;
+            const startTime = activity.last_resume_time;
             const diffMs = nowTime - new Date(startTime);
             finalTotal += Math.max(0, Math.floor(diffMs / 1000 / 60));
         }
@@ -136,7 +137,7 @@ const Dashboard = () => {
         const { error } = await supabase
             .from('activities')
             .update({
-                status: 'Concluído',
+                status: 'Aprovado',
                 total_minutes: finalTotal,
                 end_time: new Date().toISOString(),
                 is_paused: false
@@ -173,20 +174,24 @@ const Dashboard = () => {
                 final_delivery: activity.final_delivery,
                 complexity: activity.complexity,
                 product_id: activity.product_id || '',
-                manual_minutes: activity.total_minutes || ''
+                manual_minutes: activity.total_minutes || '',
+                start_date: activity.start_time ? activity.start_time.split('T')[0] : '',
+                end_date: activity.end_time ? activity.end_time.split('T')[0] : ''
             });
         } else {
             setEditingActivity(null);
             setFormData({
                 category: '',
                 description: '',
-                status: 'Pendente',
+                status: 'Aguardando',
                 reworks: '',
                 graphic_release: '',
                 final_delivery: '',
                 complexity: '1',
                 product_id: '',
-                manual_minutes: ''
+                manual_minutes: '',
+                start_date: '',
+                end_date: ''
             });
         }
         setShowModal(true);
@@ -196,37 +201,24 @@ const Dashboard = () => {
         e.preventDefault();
         const { data: { user } } = await supabase.auth.getUser();
 
-        const isManual = formData.manual_minutes !== '';
-
         const payload = {
             category: formData.category,
             description: formData.description,
-            status: isManual ? 'Concluído' : formData.status,
+            status: formData.status,
             reworks: formData.reworks,
             graphic_release: formData.graphic_release,
             final_delivery: formData.final_delivery,
             complexity: formData.complexity,
             product_id: formData.product_id,
-            total_minutes: isManual ? parseInt(formData.manual_minutes) : (editingActivity?.total_minutes || 0),
+            total_minutes: parseInt(formData.manual_minutes || 0),
             user_id: user.id,
-            start_time: editingActivity ? editingActivity.start_time : new Date().toISOString(),
-            last_resume_time: (formData.status === 'Em Andamento' && !editingActivity) ? new Date().toISOString() : (editingActivity?.last_resume_time || null),
-            end_time: isManual ? new Date().toISOString() : (editingActivity?.end_time || null)
+            start_time: formData.start_date ? new Date(formData.start_date + 'T00:00:00').toISOString() : (editingActivity ? editingActivity.start_time : new Date().toISOString()),
+            end_time: formData.end_date ? new Date(formData.end_date + 'T23:59:59').toISOString() : ((formData.status === 'Aprovado' || formData.status === 'Cancelado' || formData.status === 'Reprovado') ? new Date().toISOString() : (editingActivity?.end_time || null))
         };
 
-        let error;
-        if (editingActivity) {
-            const { error: err } = await supabase
-                .from('activities')
-                .update(payload)
-                .eq('id', editingActivity.id);
-            error = err;
-        } else {
-            const { error: err } = await supabase
-                .from('activities')
-                .insert([payload]);
-            error = err;
-        }
+        let { error } = editingActivity
+            ? await supabase.from('activities').update(payload).eq('id', editingActivity.id)
+            : await supabase.from('activities').insert([payload]);
 
         if (!error) {
             setShowModal(false);
@@ -265,13 +257,13 @@ const Dashboard = () => {
                 <table className="data-table">
                     <thead>
                         <tr>
-                            <th>Início</th>
-                            <th>Categoria</th>
+                            <th>Início/Fim</th>
+                            <th>Produto / Descrição</th>
                             <th>Liberação/Entrega</th>
                             <th>Status</th>
-                            <th>Complexidade</th>
-                            <th>Retrabalho</th>
-                            <th>Tempo Total</th>
+                            <th>Comp.</th>
+                            <th>Retr.</th>
+                            <th>Tempo</th>
                             <th>Ações</th>
                         </tr>
                     </thead>
@@ -282,25 +274,38 @@ const Dashboard = () => {
                             <tr><td colSpan="6" style={{ textAlign: 'center', padding: '2rem' }}>Nenhuma atividade registrada.</td></tr>
                         ) : activities.map((act) => (
                             <tr key={act.id}>
-                                <td style={{ fontSize: '14px' }}>
-                                    {format(new Date(act.start_time), 'dd/MM/yyyy HH:mm')}
-                                </td>
-                                <td>
-                                    <div style={{ fontWeight: 600 }}>{act.category}</div>
-                                    <div style={{ fontSize: '12px', color: 'var(--primary)', fontWeight: 500 }}>
-                                        {act.products?.name || 'Sem produto'}
+                                <td style={{ fontSize: '12px' }}>
+                                    <div style={{ fontWeight: 600 }}>{format(new Date(act.start_time), "dd/MM/yyyy HH:mm")}</div>
+                                    <div style={{ color: 'var(--text-muted)' }}>
+                                        {act.end_time ? format(new Date(act.end_time), "dd/MM/yyyy HH:mm") : '-'}
                                     </div>
                                 </td>
                                 <td>
-                                    <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-                                        Lib: {act.graphic_release ? format(new Date(act.graphic_release + 'T12:00:00'), 'dd/MM/yyyy') : '-'}
+                                    <div style={{ fontWeight: 600 }}>
+                                        {act.products?.name || 'Sem produto'} - {act.description?.split(' ')[0]}
                                     </div>
-                                    <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
-                                        Ent: {act.final_delivery ? format(new Date(act.final_delivery + 'T12:00:00'), 'dd/MM/yyyy') : '-'}
+                                    <div style={{ fontSize: '11px', color: 'var(--text-muted)', fontWeight: 500 }}>
+                                        {act.category}
                                     </div>
                                 </td>
+                                <td style={{ fontSize: '11px' }}>
+                                    <div>Lib: {act.graphic_release ? format(new Date(act.graphic_release + 'T12:00:00'), "dd/MM/yyyy") : '-'}</div>
+                                    <div style={{ color: 'var(--text-muted)' }}>Ent: {act.final_delivery ? format(new Date(act.final_delivery + 'T12:00:00'), "dd/MM/yyyy") : '-'}</div>
+                                </td>
                                 <td>
-                                    <span className={`status-badge ${act.status === 'Concluído' ? 'status-done' : (act.status === 'Pausado' ? 'status-pending' : '')}`} style={{ background: act.status === 'Pausado' ? '#fef9c3' : '', color: act.status === 'Pausado' ? '#854d0e' : '' }}>
+                                    <span
+                                        className={`status-badge`}
+                                        style={{
+                                            background:
+                                                act.status === 'Aprovado' ? '#dcfce7' :
+                                                    act.status === 'Aguardando' ? '#fef9c3' :
+                                                        act.status === 'Cancelado' || act.status === 'Reprovado' ? '#fee2e2' : '',
+                                            color:
+                                                act.status === 'Aprovado' ? '#166534' :
+                                                    act.status === 'Aguardando' ? '#854d0e' :
+                                                        act.status === 'Cancelado' || act.status === 'Reprovado' ? '#b91c1c' : ''
+                                        }}
+                                    >
                                         {act.status}
                                     </span>
                                 </td>
@@ -317,9 +322,9 @@ const Dashboard = () => {
                                 </td>
                                 <td>
                                     <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-                                        {act.status !== 'Concluído' && (
+                                        {act.status === 'Aguardando' && (
                                             <div style={{ display: 'flex', gap: '0.4rem' }}>
-                                                {act.status === 'Pendente' && (
+                                                {!act.last_resume_time && (
                                                     <button
                                                         onClick={() => handleStart(act)}
                                                         className="btn"
@@ -329,7 +334,7 @@ const Dashboard = () => {
                                                     </button>
                                                 )}
 
-                                                {act.status === 'Em Andamento' && !act.is_paused && (
+                                                {act.last_resume_time && !act.is_paused && (
                                                     <button
                                                         onClick={() => handlePause(act)}
                                                         className="btn"
@@ -406,13 +411,36 @@ const Dashboard = () => {
                                 </select>
                             </div>
 
+                            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
+                                <div className="form-group" style={{ marginBottom: 0 }}>
+                                    <label>Início (opcional)</label>
+                                    <input
+                                        type="date"
+                                        value={formData.start_date}
+                                        onChange={(e) => setFormData({ ...formData, start_date: e.target.value })}
+                                    />
+                                </div>
+                                <div className="form-group" style={{ marginBottom: 0 }}>
+                                    <label>Finalização (opcional)</label>
+                                    <input
+                                        type="date"
+                                        value={formData.end_date}
+                                        onChange={(e) => setFormData({ ...formData, end_date: e.target.value })}
+                                    />
+                                </div>
+                            </div>
+
                             <div className="form-group">
-                                <label>Tempo (minutos) - *Opcional*</label>
+                                <label>Tempo em minutos (opcional)</label>
                                 <input
                                     type="number"
                                     placeholder="Deixe vazio para cálculo automático"
                                     value={formData.manual_minutes}
-                                    onChange={(e) => setFormData({ ...formData, manual_minutes: e.target.value })}
+                                    onChange={(e) => {
+                                        const val = e.target.value;
+                                        const newStatus = (val !== '' && parseInt(val) > 0) ? 'Aprovado' : formData.status;
+                                        setFormData({ ...formData, manual_minutes: val, status: newStatus });
+                                    }}
                                 />
                             </div>
 
@@ -430,9 +458,10 @@ const Dashboard = () => {
                                 <div className="form-group">
                                     <label>Status</label>
                                     <select value={formData.status} onChange={(e) => setFormData({ ...formData, status: e.target.value })}>
-                                        <option value="Pendente">Pendente</option>
-                                        <option value="Em Andamento">Em Andamento</option>
-                                        <option value="Concluído">Concluído</option>
+                                        <option value="Aguardando">Aguardando</option>
+                                        <option value="Aprovado">Aprovado</option>
+                                        <option value="Reprovado">Reprovado</option>
+                                        <option value="Cancelado">Cancelado</option>
                                     </select>
                                 </div>
                                 <div className="form-group">
