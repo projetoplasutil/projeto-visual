@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { FileText, Download, Users, Filter, X } from 'lucide-react';
-import { format, differenceInMinutes, isWithinInterval, startOfDay, endOfDay } from 'date-fns';
+import { format, differenceInMinutes, differenceInDays, isWithinInterval, startOfDay, endOfDay } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 
@@ -180,16 +180,48 @@ const Reports = () => {
     };
 
     const getTopProducts = () => {
-        const counts = {};
+        const stats = {};
         filteredData.forEach(act => {
             if (act.products?.name) {
-                counts[act.products.name] = (counts[act.products.name] || 0) + 1;
+                const name = act.products.name;
+                if (!stats[name]) {
+                    stats[name] = { count: 0, totalMinutes: 0 };
+                }
+                stats[name].count += 1;
+                stats[name].totalMinutes += (act.total_minutes || 0);
             }
         });
-        return Object.entries(counts)
-            .map(([name, count]) => ({ name, count }))
+        return Object.entries(stats)
+            .map(([name, data]) => ({
+                name,
+                count: data.count,
+                avgMinutes: Math.round(data.totalMinutes / data.count)
+            }))
             .sort((a, b) => b.count - a.count)
             .slice(0, 10);
+    };
+
+    const getLicensorApprovalData = () => {
+        const licensorStats = {};
+
+        filteredData.forEach(act => {
+            if (act.category === 'Licenciados' && act.licensor && act.approval_send_date && act.approval_return_date) {
+                const send = new Date(act.approval_send_date + 'T12:00:00');
+                const back = new Date(act.approval_return_date + 'T12:00:00');
+                const days = differenceInDays(back, send);
+
+                if (!licensorStats[act.licensor]) {
+                    licensorStats[act.licensor] = { totalDays: 0, count: 0 };
+                }
+                licensorStats[act.licensor].totalDays += days;
+                licensorStats[act.licensor].count += 1;
+            }
+        });
+
+        return Object.keys(licensorStats).map(licensor => ({
+            name: licensor,
+            mediaDias: parseFloat((licensorStats[licensor].totalDays / licensorStats[licensor].count).toFixed(1))
+        })).sort((a, b) => b.mediaDias - a.mediaDias);
     };
 
     const stats = calculateStats();
@@ -199,6 +231,7 @@ const Reports = () => {
     const workloadData = getWorkloadData();
     const efficiencyData = getEfficiencyData();
     const topProducts = getTopProducts();
+    const licensorApprovalData = getLicensorApprovalData();
 
     return (
         <div className="main-content">
@@ -399,6 +432,23 @@ const Reports = () => {
                 </div>
             </div>
 
+            <div className="card" style={{ marginBottom: '2rem', height: '350px' }}>
+                <h3 style={{ marginBottom: '1.5rem', fontSize: '15px' }}>Tempo Médio de Aprovação por Licença (Dias)</h3>
+                <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={licensorApprovalData} margin={{ top: 20, right: 30, left: 20, bottom: 20 }}>
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                        <XAxis dataKey="name" fontSize={11} />
+                        <YAxis hide />
+                        <Tooltip />
+                        <Bar dataKey="mediaDias" fill="#8b5cf6" radius={[4, 4, 0, 0]} label={{ position: 'top', fontSize: 12, fill: 'var(--text-main)', fontWeight: 600 }}>
+                            {licensorApprovalData.map((entry, index) => (
+                                <Cell key={`cell-licensor-${index}`} fill={COLORS[index % COLORS.length]} />
+                            ))}
+                        </Bar>
+                    </BarChart>
+                </ResponsiveContainer>
+            </div>
+
             <div className="card" style={{ marginBottom: '2rem' }}>
                 <h3 style={{ marginBottom: '1.5rem', fontSize: '16px', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                     Top 10 Produtos Mais Trabalhados
@@ -409,11 +459,12 @@ const Reports = () => {
                             <th style={{ width: '50px' }}>#</th>
                             <th>Nome do Produto</th>
                             <th style={{ textAlign: 'center' }}>Qtd. de Trabalhos</th>
+                            <th style={{ textAlign: 'center' }}>Média de Tempo</th>
                         </tr>
                     </thead>
                     <tbody>
                         {topProducts.length === 0 ? (
-                            <tr><td colSpan="3" style={{ textAlign: 'center', padding: '1rem' }}>Sem dados de produtos no período.</td></tr>
+                            <tr><td colSpan="4" style={{ textAlign: 'center', padding: '1rem' }}>Sem dados de produtos no período.</td></tr>
                         ) : topProducts.map((prod, index) => (
                             <tr key={prod.name}>
                                 <td style={{ fontWeight: 600, color: 'var(--text-muted)' }}>{index + 1}º</td>
@@ -421,6 +472,11 @@ const Reports = () => {
                                 <td style={{ textAlign: 'center' }}>
                                     <span className="status-badge" style={{ background: '#e0e7ff', color: '#4338ca', fontWeight: 700 }}>
                                         {prod.count}
+                                    </span>
+                                </td>
+                                <td style={{ textAlign: 'center' }}>
+                                    <span style={{ fontWeight: 600, color: 'var(--primary)' }}>
+                                        {prod.avgMinutes} min
                                     </span>
                                 </td>
                             </tr>

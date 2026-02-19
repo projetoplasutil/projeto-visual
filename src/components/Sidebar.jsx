@@ -1,5 +1,5 @@
 import React from 'react';
-import { LayoutDashboard, FileText, Settings, LogOut, Users, Box } from 'lucide-react';
+import { LayoutDashboard, FileText, Settings, LogOut, Users, Box, Layers } from 'lucide-react';
 import { NavLink } from 'react-router-dom';
 
 const Sidebar = ({ userRole, onLogout }) => {
@@ -19,6 +19,11 @@ const Sidebar = ({ userRole, onLogout }) => {
                 <NavLink to="/products" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
                     <Box size={20} />
                     Produtos
+                </NavLink>
+
+                <NavLink to="/create-line" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}>
+                    <Layers size={20} />
+                    Criar Linha
                 </NavLink>
 
                 {userRole === 'master' && (

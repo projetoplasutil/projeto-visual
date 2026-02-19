@@ -6,6 +6,8 @@ import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Reports from './pages/Reports';
 import Products from './pages/Products';
+import ResetPassword from './pages/ResetPassword';
+import CreateLine from './pages/CreateLine';
 
 function App() {
   const [session, setSession] = useState(null);
@@ -21,9 +23,15 @@ function App() {
     });
 
     // Escutar mudanças na auth
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       setSession(session);
-      if (session) fetchProfile(session.user.id);
+      if (session) {
+        fetchProfile(session.user.id);
+        if (event === 'PASSWORD_RECOVERY') {
+          // Mantém o estado de recuperação para redirecionar
+          window.location.href = '/reset-password';
+        }
+      }
       else {
         setProfile(null);
         setLoading(false);
@@ -86,6 +94,16 @@ function App() {
             <Route
               path="/products"
               element={session ? <Products /> : <Navigate to="/login" />}
+            />
+
+            <Route
+              path="/create-line"
+              element={session ? <CreateLine /> : <Navigate to="/login" />}
+            />
+
+            <Route
+              path="/reset-password"
+              element={<ResetPassword />}
             />
 
             <Route path="*" element={<Navigate to={session ? "/dashboard" : "/login"} />} />

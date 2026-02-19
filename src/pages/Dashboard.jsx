@@ -17,6 +17,7 @@ const Dashboard = () => {
     const [loading, setLoading] = useState(true);
     const [products, setProducts] = useState([]);
     const [now, setNow] = useState(new Date());
+    const [searchTerm, setSearchTerm] = useState('');
 
     useEffect(() => {
         fetchActivities();
@@ -34,10 +35,58 @@ const Dashboard = () => {
             return act.total_minutes || 0;
         }
         const lastResume = new Date(act.last_resume_time);
-        const diffMs = now - lastResume;
+
+        // Limita o cálculo às 18:00 do dia atual se já passou desse horário
+        let effectiveNow = now;
+        const eighteenToday = new Date(now);
+        eighteenToday.setHours(18, 0, 0, 0);
+
+        if (now > eighteenToday && lastResume < eighteenToday) {
+            effectiveNow = eighteenToday;
+        }
+
+        const diffMs = effectiveNow - lastResume;
         const diffMin = Math.max(0, Math.floor(diffMs / 1000 / 60));
         return (act.total_minutes || 0) + diffMin;
     };
+
+    // Auto-pause às 18:00
+    useEffect(() => {
+        const checkAutoPause = async () => {
+            const h = now.getHours();
+            if (h >= 18) {
+                const eighteenToday = new Date(now);
+                eighteenToday.setHours(18, 0, 0, 0);
+
+                const activitiesToPause = activities.filter(act =>
+                    act.status === 'Aguardando' &&
+                    !act.is_paused &&
+                    act.last_resume_time &&
+                    new Date(act.last_resume_time) < eighteenToday
+                );
+
+                if (activitiesToPause.length > 0) {
+                    for (const act of activitiesToPause) {
+                        const lastResume = new Date(act.last_resume_time);
+                        const diffMs = eighteenToday - lastResume;
+                        const diffMin = Math.max(0, Math.floor(diffMs / 1000 / 60));
+                        const newTotal = (act.total_minutes || 0) + diffMin;
+
+                        await supabase
+                            .from('activities')
+                            .update({
+                                is_paused: true,
+                                total_minutes: newTotal
+                            })
+                            .eq('id', act.id);
+                    }
+                    fetchActivities();
+                }
+            }
+        };
+
+        checkAutoPause();
+    }, [now, activities]);
 
     // Form fields
     const [formData, setFormData] = useState({
@@ -51,7 +100,11 @@ const Dashboard = () => {
         product_id: '',
         manual_minutes: '',
         start_date: '',
-        end_date: ''
+        end_date: '',
+        observations: '',
+        approval_send_date: '',
+        approval_return_date: '',
+        licensor: ''
     });
 
 
@@ -176,7 +229,11 @@ const Dashboard = () => {
                 product_id: activity.product_id || '',
                 manual_minutes: activity.total_minutes || '',
                 start_date: activity.start_time ? activity.start_time.split('T')[0] : '',
-                end_date: activity.end_time ? activity.end_time.split('T')[0] : ''
+                end_date: activity.end_time ? activity.end_time.split('T')[0] : '',
+                observations: activity.observations || '',
+                approval_send_date: activity.approval_send_date || '',
+                approval_return_date: activity.approval_return_date || '',
+                licensor: activity.licensor || ''
             });
         } else {
             setEditingActivity(null);
@@ -191,7 +248,11 @@ const Dashboard = () => {
                 product_id: '',
                 manual_minutes: '',
                 start_date: '',
-                end_date: ''
+                end_date: '',
+                observations: '',
+                approval_send_date: '',
+                approval_return_date: '',
+                licensor: ''
             });
         }
         setShowModal(true);
@@ -211,6 +272,10 @@ const Dashboard = () => {
             complexity: formData.complexity,
             product_id: formData.product_id,
             total_minutes: parseInt(formData.manual_minutes || 0),
+            observations: formData.observations,
+            approval_send_date: formData.category === 'Licenciados' ? formData.approval_send_date : null,
+            approval_return_date: formData.category === 'Licenciados' ? formData.approval_return_date : null,
+            licensor: formData.category === 'Licenciados' ? formData.licensor : null,
             user_id: user.id,
             start_time: formData.start_date ? new Date(formData.start_date + 'T00:00:00').toISOString() : (editingActivity ? editingActivity.start_time : new Date().toISOString()),
             end_time: formData.end_date ? new Date(formData.end_date + 'T23:59:59').toISOString() : ((formData.status === 'Aprovado' || formData.status === 'Cancelado' || formData.status === 'Reprovado') ? new Date().toISOString() : (editingActivity?.end_time || null))
@@ -227,6 +292,13 @@ const Dashboard = () => {
             alert('Erro ao salvar: ' + error.message);
         }
     };
+
+    const filteredActivities = activities.filter(act => {
+        const search = searchTerm.toLowerCase();
+        return act.description?.toLowerCase().includes(search) ||
+            act.products?.name?.toLowerCase().includes(search) ||
+            act.category?.toLowerCase().includes(search);
+    });
 
     return (
         <div className="main-content">
@@ -246,7 +318,12 @@ const Dashboard = () => {
                     <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
                         <div style={{ position: 'relative' }}>
                             <Search size={16} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-                            <input placeholder="Pesquisar..." style={{ paddingLeft: '32px', width: '200px', height: '36px', fontSize: '14px' }} />
+                            <input
+                                placeholder="Pesquisar por descrição..."
+                                style={{ paddingLeft: '32px', width: '250px', height: '36px', fontSize: '14px' }}
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                            />
                         </div>
                     </div>
                     <button className="btn" style={{ background: '#f3f4f6', fontSize: '14px' }}>
@@ -269,10 +346,10 @@ const Dashboard = () => {
                     </thead>
                     <tbody>
                         {loading ? (
-                            <tr><td colSpan="6" style={{ textAlign: 'center', padding: '2rem' }}>Carregando...</td></tr>
-                        ) : activities.length === 0 ? (
-                            <tr><td colSpan="6" style={{ textAlign: 'center', padding: '2rem' }}>Nenhuma atividade registrada.</td></tr>
-                        ) : activities.map((act) => (
+                            <tr><td colSpan="8" style={{ textAlign: 'center', padding: '2rem' }}>Carregando...</td></tr>
+                        ) : filteredActivities.length === 0 ? (
+                            <tr><td colSpan="8" style={{ textAlign: 'center', padding: '2rem' }}>Nenhuma atividade encontrada.</td></tr>
+                        ) : filteredActivities.map((act) => (
                             <tr key={act.id}>
                                 <td style={{ fontSize: '12px' }}>
                                     <div style={{ fontWeight: 600 }}>{format(new Date(act.start_time), "dd/MM/yyyy HH:mm")}</div>
@@ -478,6 +555,55 @@ const Dashboard = () => {
                                 <label>Retrabalhos</label>
                                 <input value={formData.reworks} onChange={(e) => setFormData({ ...formData, reworks: e.target.value })} />
                             </div>
+
+                            <div className="form-group">
+                                <label>Observação</label>
+                                <textarea
+                                    rows="2"
+                                    value={formData.observations}
+                                    onChange={(e) => setFormData({ ...formData, observations: e.target.value })}
+                                    placeholder="Informações adicionais..."
+                                />
+                            </div>
+
+                            {formData.category === 'Licenciados' && (
+                                <>
+                                    <div className="form-group">
+                                        <label>Licenciador</label>
+                                        <select
+                                            value={formData.licensor}
+                                            onChange={(e) => setFormData({ ...formData, licensor: e.target.value })}
+                                        >
+                                            <option value="">Selecione um licenciador...</option>
+                                            <option value="Disney">Disney</option>
+                                            <option value="Universal">Universal</option>
+                                            <option value="Warner">Warner</option>
+                                            <option value="Sanrio">Sanrio</option>
+                                            <option value="Redibra">Redibra</option>
+                                            <option value="Turma da Monica">Turma da Mônica</option>
+                                            <option value="Hasbro">Hasbro</option>
+                                        </select>
+                                    </div>
+                                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1rem' }}>
+                                        <div className="form-group" style={{ marginBottom: 0 }}>
+                                            <label>Envio Aprovação</label>
+                                            <input
+                                                type="date"
+                                                value={formData.approval_send_date}
+                                                onChange={(e) => setFormData({ ...formData, approval_send_date: e.target.value })}
+                                            />
+                                        </div>
+                                        <div className="form-group" style={{ marginBottom: 0 }}>
+                                            <label>Retorno Aprovação</label>
+                                            <input
+                                                type="date"
+                                                value={formData.approval_return_date}
+                                                onChange={(e) => setFormData({ ...formData, approval_return_date: e.target.value })}
+                                            />
+                                        </div>
+                                    </div>
+                                </>
+                            )}
 
                             <div className="form-group">
                                 <label>Liberação Gráfica</label>
